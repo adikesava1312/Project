@@ -1,0 +1,242 @@
+import { useState, useEffect, useRef } from 'react'
+import { Button } from "/components/ui/button"
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "/components/ui/card"
+import { User, Play, X, Loader2 } from "lucide-react"
+
+// Mock feature extraction and Random Forest prediction
+class MockRandomForest {
+  private emotions = ['Happy', 'Sad', 'Angry', 'Surprised', 'Neutral', 'Disgusted', 'Fearful']
+  private featureNames = ['eyeDistance', 'mouthWidth', 'browRaise', 'lipCornerUp', 'lipCornerDown']
+  
+  // Mock feature extraction from face (in reality this would come from face detection)
+  extractFeatures(): number[] {
+    return this.featureNames.map(() => Math.random())
+  }
+
+  // Mock Random Forest prediction
+  predict(features: number[]): string {
+    // Simulate Random Forest voting process
+    const votes = Array(5).fill(0).map(() => 
+      Math.floor(Math.random() * this.emotions.length)
+    )
+    
+    // Count votes (like multiple decision trees voting)
+    const voteCounts = votes.reduce((acc, vote) => {
+      acc[vote] = (acc[vote] || 0) + 1
+      return acc
+    }, {} as Record<number, number>)
+    
+    // Get emotion with most votes
+    const winningVote = Object.entries(voteCounts).reduce(
+      (max, [emotionIdx, count]) => 
+        count > max.count ? {emotionIdx: Number(emotionIdx), count} : max,
+      {emotionIdx: 0, count: 0}
+    )
+    
+    return this.emotions[winningVote.emotionIdx]
+  }
+}
+
+export default function EmotionDetectionRF() {
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null)
+  const [emotion, setEmotion] = useState<string | null>(null)
+  const [confidence, setConfidence] = useState<number | null>(null)
+  const [isDetecting, setIsDetecting] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [features, setFeatures] = useState<number[]>([])
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const detectionInterval = useRef<NodeJS.Timeout | null>(null)
+  const rfModel = useRef(new MockRandomForest())
+
+  const startCamera = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      })
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        streamRef.current = stream
+      }
+      setHasPermission(true)
+    } catch (err) {
+      setError('Could not access the camera. Please check your permissions.')
+      setHasPermission(false)
+      console.error(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setHasPermission(false)
+    stopDetection()
+  }
+
+  const detectEmotion = () => {
+    // Mock feature extraction
+    const extractedFeatures = rfModel.current.extractFeatures()
+    setFeatures(extractedFeatures)
+    
+    // Mock Random Forest prediction
+    const predictedEmotion = rfModel.current.predict(extractedFeatures)
+    const predictedConfidence = Math.random() * 0.5 + 0.5 // Random confidence between 0.5-1.0
+    
+    setEmotion(predictedEmotion)
+    setConfidence(predictedConfidence)
+  }
+
+  const startDetection = () => {
+    if (!hasPermission) return
+    
+    setIsDetecting(true)
+    setEmotion(null)
+    setConfidence(null)
+    
+    // Initial detection
+    detectEmotion()
+    
+    // Set up interval for continuous detection
+    detectionInterval.current = setInterval(detectEmotion, 2000)
+  }
+
+  const stopDetection = () => {
+    if (detectionInterval.current) {
+      clearInterval(detectionInterval.current)
+      detectionInterval.current = null
+    }
+    setIsDetecting(false)
+    setEmotion(null)
+    setConfidence(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      stopCamera()
+      stopDetection()
+    }
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold flex items-center gap-2">
+            <User className="w-6 h-6" />
+            Random Forest Emotion Detection
+          </CardTitle>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+              {error}
+            </div>
+          )}
+
+          <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+            {hasPermission ? (
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                muted 
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                <p className="text-gray-500">Camera feed will appear here</p>
+              </div>
+            )}
+          </div>
+
+          {emotion && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm text-blue-600">Detected Emotion</p>
+                {confidence && (
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Confidence: {(confidence * 100).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <p className="text-2xl font-bold text-blue-800">{emotion}</p>
+              
+              {features.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-blue-100">
+                  <p className="text-xs text-blue-500 mb-1">Mock Features:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {features.map((val, i) => (
+                      <span key={i} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                        f{i}: {val.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="flex flex-col sm:flex-row gap-2">
+          {isLoading ? (
+            <Button disabled className="w-full sm:w-auto">
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Loading...
+            </Button>
+          ) : !hasPermission ? (
+            <Button onClick={startCamera} className="w-full sm:w-auto">
+              <Play className="w-4 h-4 mr-2" />
+              Start Camera
+            </Button>
+          ) : (
+            <>
+              {!isDetecting ? (
+                <Button 
+                  onClick={startDetection} 
+                  className="w-full sm:w-auto"
+                  variant="default"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Start Detection
+                </Button>
+              ) : (
+                <Button 
+                  onClick={stopDetection} 
+                  className="w-full sm:w-auto"
+                  variant="secondary"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Stop Detection
+                </Button>
+              )}
+              <Button 
+                onClick={stopCamera} 
+                className="w-full sm:w-auto"
+                variant="outline"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Stop Camera
+              </Button>
+            </>
+          )}
+        </CardFooter>
+      </Card>
+    </div>
+  )
+}
